@@ -22,5 +22,8 @@
   "bugs": {
     "url": "https://github.com/alibaba/kiwi/issues"
   },
-  "homepage": "https://github.com/alibaba/kiwi#readme"
+  "homepage": "https://github.com/alibaba/kiwi#readme",
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
 }

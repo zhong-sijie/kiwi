@@ -1,13 +1,16 @@
 <template>
-  <div>Hello Kiwi Vue3 Demo</div>
+  <div>
+    <CompositionDemo />
+    <OptionsDemo />
+  </div>
 </template>
 
 <script setup lang="ts">
-// 最小化，无需引入其他内容
+import CompositionDemo from './components/CompositionDemo.vue';
+import OptionsDemo from './components/OptionsDemo.vue';
 </script>
 
 <style>
-/* 可选：最小样式 */
 body {
   margin: 0;
 }
