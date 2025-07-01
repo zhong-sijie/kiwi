@@ -215,12 +215,7 @@ export function translateText(text: string, type: TranslateAPiEnum) {
         }
         // baidu
         if (type === TranslateAPiEnum.Baidu) {
-          baiduTranslate(
-            appId,
-            appKey,
-            'en',
-            'zh'
-          )(text)
+          baiduTranslate(appId, appKey, 'en', 'zh')(text)
             .then(data => {
               if (data && data.trans_result) {
                 const result = data.trans_result.map(item => item.dst) || [];
