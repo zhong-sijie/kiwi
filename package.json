@@ -5,7 +5,9 @@
     "kiwi-cli",
     "kiwi-intl",
     "kiwi-linter",
-    "kiwi-demo"
+    "kiwi-react-demo",
+    "kiwi-vue2-demo",
+    "kiwi-vue3-demo"
   ],
   "scripts": {
     "watch": "cd kiwi-linter && npm run watch",
@@ -23,7 +25,4 @@
     "url": "https://github.com/alibaba/kiwi/issues"
   },
   "homepage": "https://github.com/alibaba/kiwi#readme",
-  "devDependencies": {
-    "typescript": "^5.8.3"
-  }
 }
