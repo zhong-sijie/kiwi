@@ -14,7 +14,8 @@
     "publish-linter": "cd kiwi-linter && vsce publish",
     "precommit": "node ./scripts/prettier.js && git add .",
     "prettier": "node ./scripts/prettier.js",
-    "run-all-kiwi": "node ./scripts/run-all-kiwi.js"
+    "run-all-kiwi": "node ./scripts/run-all-kiwi.js",
+    "reset-all-demo-git": "git -C kiwi-react-demo reset --hard && git -C kiwi-vue2-demo reset --hard && git -C kiwi-vue3-demo reset --hard && git -C kiwi-react-demo clean -fd && git -C kiwi-vue2-demo clean -fd && git -C kiwi-vue3-demo clean -fd"
   },
   "repository": {
     "type": "git",
