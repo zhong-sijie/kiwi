@@ -13,7 +13,8 @@
     "watch": "cd kiwi-linter && npm run watch",
     "publish-linter": "cd kiwi-linter && vsce publish",
     "precommit": "node ./scripts/prettier.js && git add .",
-    "prettier": "node ./scripts/prettier.js"
+    "prettier": "node ./scripts/prettier.js",
+    "run-all-kiwi": "node ./scripts/run-all-kiwi.js"
   },
   "repository": {
     "type": "git",
@@ -24,5 +25,5 @@
   "bugs": {
     "url": "https://github.com/alibaba/kiwi/issues"
   },
-  "homepage": "https://github.com/alibaba/kiwi#readme",
+  "homepage": "https://github.com/alibaba/kiwi#readme"
 }
