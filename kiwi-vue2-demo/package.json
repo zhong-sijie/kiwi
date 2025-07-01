@@ -6,7 +6,7 @@
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
-    "kiwi": "node ../kiwi-cli/dist/index.js"
+    "kiwi": "node ../kiwi-cli/dist/index.js --extract ./src"
   },
   "dependencies": {
     "core-js": "^3.8.3",
