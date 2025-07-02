@@ -23,10 +23,13 @@ import {
 import { replaceAndUpdate, hasImportI18N, createImportI18N } from './replace';
 import { getProjectConfig } from '../utils';
 
+// 获取 kiwi 配置
 const CONFIG = getProjectConfig();
 
 /**
- * 剔除 kiwiDir 下的文件
+ * 剔除 kiwiDir 下的文件，避免对语言包目录进行处理
+ * @param files 文件路径数组
+ * @returns 过滤后的文件路径数组
  */
 function removeLangsFiles(files: string[]) {
   const langsDir = path.resolve(process.cwd(), CONFIG.kiwiDir);
@@ -37,17 +40,23 @@ function removeLangsFiles(files: string[]) {
 }
 
 /**
- * 递归匹配项目中所有的代码的中文
+ * 递归查找指定目录下所有代码文件中的中文文本
+ * @param dir 目录路径
+ * @returns 包含中文文本的文件及其中文信息
  */
 function findAllChineseText(dir: string) {
   const first = dir.split(',')[0];
   let files = [];
+  // 判断是目录还是文件
   if (isDirectory(first)) {
     const dirPath = path.resolve(process.cwd(), dir);
+    // 获取所有指定文件
     files = getSpecifiedFiles(dirPath, CONFIG.ignoreDir, CONFIG.ignoreFile);
   } else {
+    // 过滤掉语言包目录下的文件
     files = removeLangsFiles(dir.split(','));
   }
+  // 只保留代码文件
   const filterFiles = files.filter(file => {
     return (
       (isFile(file) && file.endsWith('.ts')) ||
@@ -57,10 +66,12 @@ function findAllChineseText(dir: string) {
       file.endsWith('.jsx')
     );
   });
+
+  // 遍历所有文件，查找中文文本
   const allTexts = filterFiles.reduce((pre, file) => {
     const code = readFile(file);
     const texts = findChineseText(code, file);
-    // 调整文案顺序，保证从后面的文案往前替换，避免位置更新导致替换出错
+    // 按照位置倒序，避免替换时位置错乱
     const sortTexts = _.sortBy(texts, obj => -obj.range.start);
     if (texts.length > 0) {
       console.log(`${highlightText(file)} 发现 ${highlightText(texts.length)} 处中文文案`);
@@ -73,10 +84,12 @@ function findAllChineseText(dir: string) {
 }
 
 /**
- * 处理作为key值的翻译原文
+ * 处理作为 key 值的翻译原文，仅保留汉字和字母，取前 5 位
+ * @param text 原始中文文本
+ * @returns 用于 key 生成的原文
  */
 function getTransOriginText(text: string) {
-  // 避免翻译的字符里包含数字或者特殊字符等情况，只过滤出汉字和字母
+  // 只保留汉字和字母
   const reg = /[a-zA-Z\u4e00-\u9fa5]+/g;
   const findText = text.match(reg) || [];
   const transOriginText = findText ? findText.join('').slice(0, 5) : '中文符号';
@@ -85,12 +98,14 @@ function getTransOriginText(text: string) {
 }
 
 /**
- * @param currentFilename 文件路径
- * @returns string[]
+ * 根据文件路径生成建议的 key 前缀
+ * @param currentFilename 当前文件路径
+ * @returns string[] key 前缀建议
  */
 function getSuggestion(currentFilename: string) {
   let suggestion = [];
-  const suggestPageRegex = /\/pages\/\w+\/([^\/]+)\/([^\/\.]+)/;
+  // 匹配 pages 目录下的路径
+  const suggestPageRegex = /\/pages\/\w+\/([^\/]+)\/([^\/.]+)/;
 
   if (currentFilename.includes('/pages/')) {
     suggestion = currentFilename.match(suggestPageRegex);
@@ -115,23 +130,29 @@ function getSuggestion(currentFilename: string) {
 }
 
 /**
- * 统一处理key值，已提取过的文案直接替换，翻译后的key若相同，加上出现次数
- * @param currentFilename 文件路径
+ * 统一处理 key 值，已提取过的文案直接替换，翻译后的 key 若相同，加上出现次数
+ * @param currentFilename 当前文件路径
  * @param langsPrefix 替换后的前缀
- * @param translateTexts 翻译后的key值
+ * @param translateTexts 翻译后的 key 值
  * @param targetStrs 当前文件提取后的文案
- * @returns any[] 最终可用于替换的key值和文案
+ * @returns any[] 最终可用于替换的 key 值和文案
  */
 function getReplaceableStrs(currentFilename: string, langsPrefix: string, translateTexts: string[], targetStrs: any[]) {
+  // 获取当前项目的语言包对象
   const finalLangObj = getSuggestLangObj();
+  // 虚拟内存，避免重复 key
   const virtualMemory = {};
+  // 获取 key 前缀建议
   const suggestion = getSuggestion(currentFilename);
+  // 遍历所有待替换的中文文案
   const replaceableStrs = targetStrs.reduce((prev, curr, i) => {
     const _text = curr.text;
+    // 查找已存在的 key
     let key = findMatchKey(finalLangObj, _text);
     if (key) {
       key = key.replace(/-/g, '_');
     }
+    // 如果该文案未处理过
     if (!virtualMemory[_text]) {
       if (key) {
         virtualMemory[_text] = key;
@@ -141,6 +162,7 @@ function getReplaceableStrs(currentFilename: string, langsPrefix: string, transl
           needWrite: false
         });
       }
+      // 生成新的 key
       const transText = translateTexts[i] && _.camelCase(translateTexts[i] as string);
       let transKey = `${suggestion.length ? suggestion.join('.') + '.' : ''}${transText}`;
       transKey = transKey.replace(/-/g, '_');
@@ -166,6 +188,7 @@ function getReplaceableStrs(currentFilename: string, langsPrefix: string, transl
         needWrite: true
       });
     } else {
+      // 已处理过的文案直接复用 key
       return prev.concat({
         target: curr,
         key: virtualMemory[_text],
@@ -178,12 +201,13 @@ function getReplaceableStrs(currentFilename: string, langsPrefix: string, transl
 }
 
 /**
- * 递归匹配项目中所有的代码的中文
+ * 递归查找并替换项目中所有代码文件的中文
  * @param {dirPath} 文件夹路径
+ * @param {prefix} key 前缀
  */
 function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) {
   const dir = dirPath || './';
-  // 去除I18N
+  // 去除 I18N 前缀
   const langsPrefix = prefix ? prefix.replace(/^I18N\./, '') : null;
   // 翻译源配置错误，则终止
   const origin = CONFIG.defaultTranslateKeyApi || 'Pinyin';
@@ -194,6 +218,7 @@ function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) 
     return;
   }
 
+  // 查找所有包含中文的目标文件及文案
   const allTargetStrs = findAllChineseText(dir);
   if (allTargetStrs.length === 0) {
     console.log(highlightText('没有发现可替换的文案！'));
@@ -213,7 +238,7 @@ function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) 
 
   console.log('即将截取每个中文文案的前5位翻译生成key值，并替换中...');
 
-  // 对当前文件进行文案key生成和替换
+  // 对每个文件进行 key 生成和替换
   const generateKeyAndReplace = async item => {
     const currentFilename = item.file;
     console.log(`${currentFilename} 替换中...`);
@@ -233,8 +258,9 @@ function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) 
 
     let translateTexts;
 
+    // 选择翻译源进行翻译
     if (origin !== 'Google') {
-      // 翻译中文文案，百度和pinyin将文案进行拼接统一翻译
+      // 百度和 pinyin 将文案拼接统一翻译
       const delimiter = origin === 'Baidu' ? '\n' : '$';
       const translateOriginTexts = targetStrs.reduce((prev, curr, i) => {
         const transOriginText = getTransOriginText(curr.text);
@@ -246,7 +272,7 @@ function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) 
 
       translateTexts = await translateKeyText(translateOriginTexts, origin);
     } else {
-      // google并发性较好，且未找到有效的分隔符，故仍然逐个文案进行翻译
+      // Google 并发翻译
       const translatePromises = targetStrs.reduce((prev, curr) => {
         const transOriginText = getTransOriginText(curr.text);
         return prev.concat(translateText(transOriginText, 'en_US'));
@@ -260,8 +286,10 @@ function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) 
       return;
     }
 
+    // 生成可替换的 key 和文案
     const replaceableStrs = getReplaceableStrs(currentFilename, langsPrefix, translateTexts, targetStrs);
 
+    // 依次替换文件中的中文
     await replaceableStrs
       .reduce((prev, obj) => {
         return prev.then(() => {
@@ -282,6 +310,7 @@ function extractAll({ dirPath, prefix }: { dirPath?: string; prefix?: string }) 
       });
   };
 
+  // 依次处理所有目标文件
   allTargetStrs
     .reduce((prev, current) => {
       return prev.then(() => {

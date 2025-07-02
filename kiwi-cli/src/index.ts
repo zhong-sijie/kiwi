@@ -139,7 +139,6 @@ if (commander.translate) {
 }
 
 if (commander.extract) {
-  console.log(isString(commander.prefix));
   if (commander.prefix === true) {
     console.log('请指定翻译后文案 key 值的前缀 --prefix xxxx');
   } else if (isString(commander.prefix) && !new RegExp(/^I18N(\.[-_a-zA-Z1-9$]+)+$/).test(commander.prefix)) {

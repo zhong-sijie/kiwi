@@ -21,5 +21,6 @@
   "defaultTranslateKeyApi": "Pinyin",
   "importI18N": "import I18N from 'src/utils/I18N';",
   "ignoreDir": [],
-  "ignoreFile": []
+  "ignoreFile": [],
+  "vueVersion": "vue3"
 }
