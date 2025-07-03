@@ -5,6 +5,7 @@
 import * as ts from 'typescript';
 import * as compiler from '@angular/compiler';
 import * as compilerVue from 'vue-template-compiler';
+import * as compilerVue3 from '@vue/compiler-sfc';
 import * as babel from '@babel/core';
 import * as babelParser from '@babel/parser';
 import * as babelTraverse from '@babel/traverse';
@@ -366,10 +367,38 @@ function escapeRegExp(str: string): string {
 }
 
 /**
- * 递归匹配 vue 文件中的中文
- * @param code 代码内容
+ * 辅助：读取 kiwi 配置文件获取 vue 版本
+ */
+function getVueVersionFromConfig(): 'vue2' | 'vue3' {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const configPath = path.resolve(process.cwd(), './kiwi.config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      return config.vueVersion || 'vue3';
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'vue3';
+}
+
+/**
+ * 递归匹配 vue 文件中的中文（主入口）
  */
 function findTextInVue(code: string) {
+  const vueVersion = getVueVersionFromConfig();
+  if (vueVersion === 'vue2') {
+    return findTextInVue2(code);
+  }
+  return findTextInVue3(code);
+}
+
+/**
+ * Vue2 文件中文查找处理
+ */
+function findTextInVue2(code: string) {
   // 1. 预处理：替换常见 HTML 空格实体，避免干扰后续正则
   code = replaceHtmlSpaces(code);
   let matches = [];
@@ -414,6 +443,243 @@ function findTextInVue(code: string) {
   // 7. 解析 <script> 部分，查找 TS 代码中的中文
   const sfc = compilerVue.parseComponent(code.toString());
   return matchesTempResult.concat(findTextInVueTs(sfc.script.content, 'AS', sfc.script.start));
+}
+
+/**
+ * Vue3 文件中文查找处理
+ */
+function findTextInVue3(code: string) {
+  const matches = [];
+
+  try {
+    // 使用 Vue3 的 SFC 编译器解析
+    const { descriptor } = compilerVue3.parse(code);
+
+    // 1. 处理 template 部分
+    if (descriptor.template) {
+      const templateMatches = findTextInVue3Template(descriptor.template, code);
+      matches.push(...templateMatches);
+    }
+
+    // 2. 处理 script 部分
+    if (descriptor.script) {
+      const scriptMatches = findTextInVue3Script(descriptor.script, code);
+      matches.push(...scriptMatches);
+    }
+
+    // 3. 处理 script setup 部分
+    if (descriptor.scriptSetup) {
+      const scriptSetupMatches = findTextInVue3Script(descriptor.scriptSetup, code);
+      matches.push(...scriptSetupMatches);
+    }
+  } catch (error) {
+    console.error('Vue3 解析错误:', error);
+    // 解析失败时回退到 Vue2 逻辑
+    return findTextInVue2(code);
+  }
+
+  return matches;
+}
+
+/**
+ * 处理 Vue3 template 部分的中文
+ */
+function findTextInVue3Template(template: any, code: string) {
+  const matches = [];
+
+  if (!template.ast) return matches;
+
+  function visitNode(node: any) {
+    // 处理文本节点
+    if (node.type === 2 && node.content && hasChinese(node.content)) {
+      // 2 = NodeTypes.TEXT
+      const range = { start: node.loc.start.offset, end: node.loc.end.offset };
+      matches.push({
+        range,
+        text: node.content.trim(),
+        isString: false,
+        arrf: [node.loc.start.offset, node.loc.end.offset]
+      });
+    }
+
+    // 处理插值表达式 ({{ }})
+    if (node.type === 5 && node.content) {
+      // 5 = NodeTypes.INTERPOLATION
+      const content = node.content;
+      // 内容区间
+      const contentStart = content.loc.start.offset;
+      const contentEnd = content.loc.end.offset;
+
+      // 处理模板字符串
+      if (content.type === 16) {
+        // 16 = NodeTypes.TEMPLATE_LITERAL
+        const templateContent = content.content;
+        if (hasChinese(templateContent)) {
+          const range = { start: contentStart, end: contentEnd };
+          matches.push({
+            range,
+            text: `\`${templateContent}\``,
+            isString: true,
+            arrf: [contentStart, contentEnd]
+          });
+        }
+      }
+
+      // 处理字符串字面量
+      if (content.type === 4) {
+        // 4 = NodeTypes.SIMPLE_EXPRESSION
+        const expressionContent = content.content;
+        if (hasChinese(expressionContent)) {
+          const range = { start: contentStart, end: contentEnd };
+          matches.push({
+            range,
+            text: expressionContent,
+            isString: true,
+            arrf: [contentStart, contentEnd]
+          });
+        }
+      }
+
+      // 处理复合表达式 (如字符串拼接)
+      if (content.type === 8) {
+        // 8 = NodeTypes.COMPOUND_EXPRESSION
+        const compoundContent = content.children;
+        let fullExpression = '';
+        let hasChineseInCompound = false;
+
+        compoundContent.forEach((child: any) => {
+          if (child.type === 4) {
+            // 4 = NodeTypes.SIMPLE_EXPRESSION
+            if (hasChinese(child.content)) {
+              hasChineseInCompound = true;
+            }
+            fullExpression += child.content;
+          } else if (child.type === 17) {
+            // 17 = NodeTypes.TEXT_CALL
+            fullExpression += child.content;
+          }
+        });
+
+        if (hasChineseInCompound) {
+          const range = { start: contentStart, end: contentEnd };
+          matches.push({
+            range,
+            text: fullExpression,
+            isString: true,
+            arrf: [contentStart, contentEnd]
+          });
+        }
+      }
+    }
+
+    // 处理属性中的中文
+    if (node.props) {
+      node.props.forEach((prop: any) => {
+        if (prop.type === 6 && prop.value && hasChinese(prop.value.content)) {
+          // 6 = NodeTypes.ATTRIBUTE
+          const range = { start: prop.loc.start.offset, end: prop.loc.end.offset };
+          matches.push({
+            range,
+            text: prop.value.content,
+            isString: true,
+            arrf: [prop.loc.start.offset, prop.loc.end.offset]
+          });
+        }
+      });
+    }
+
+    // 递归处理子节点
+    if (node.children) {
+      node.children.forEach(visitNode);
+    }
+  }
+
+  visitNode(template.ast);
+  return matches;
+}
+
+/**
+ * 处理 Vue3 script 部分的中文
+ */
+function findTextInVue3Script(script: any, code: string) {
+  const matches = [];
+
+  if (!script.content) return matches;
+
+  // 计算 script 在原始代码中的偏移量
+  const scriptStartOffset = script.loc.start.offset;
+
+  // 使用 TypeScript 解析 script 内容
+  const scriptContent = script.content;
+  const ast = ts.createSourceFile('', scriptContent, ts.ScriptTarget.ES2015, true, ts.ScriptKind.TS);
+
+  /**
+   * 递归遍历 TypeScript AST 节点，查找包含中文的字符串
+   * @param node TypeScript AST 节点
+   */
+  function visit(node: ts.Node) {
+    switch (node.kind) {
+      case ts.SyntaxKind.StringLiteral: {
+        // 处理字符串字面量，如: "你好世界"
+        const { text } = node as ts.StringLiteral;
+        if (hasChinese(text)) {
+          // 计算在原始代码中的位置（需要加上 script 部分的偏移量）
+          const start = node.getStart() + scriptStartOffset;
+          const end = node.getEnd() + scriptStartOffset;
+          matches.push({
+            range: { start, end },
+            text,
+            isString: true,
+            arrf: [start, end] // 兼容旧版本的数组格式
+          });
+        }
+        break;
+      }
+      case ts.SyntaxKind.TemplateExpression: {
+        // 处理模板表达式，如: `你好${name}世界`
+        const { pos, end } = node;
+        // 提取模板内容并移除插值表达式，只保留静态文本部分
+        let templateContent = scriptContent
+          .slice(pos, end)
+          .toString()
+          .replace(/\$\{[^\}]+\}/, '');
+        if (hasChinese(templateContent)) {
+          const start = node.getStart() + scriptStartOffset;
+          const end = node.getEnd() + scriptStartOffset;
+          matches.push({
+            range: { start, end },
+            // 提取完整的模板字符串内容（包含反引号）
+            text: scriptContent.slice(node.getStart() + 1, node.getEnd() - 1),
+            isString: true,
+            arrf: [start, end]
+          });
+        }
+        break;
+      }
+      case ts.SyntaxKind.NoSubstitutionTemplateLiteral: {
+        // 处理无插值的模板字符串，如: `你好世界`
+        const { pos, end } = node;
+        const templateContent = scriptContent.slice(pos, end);
+        if (hasChinese(templateContent)) {
+          const start = node.getStart() + scriptStartOffset;
+          const end = node.getEnd() + scriptStartOffset;
+          matches.push({
+            range: { start, end },
+            // 提取模板字符串内容（不包含反引号）
+            text: scriptContent.slice(node.getStart() + 1, node.getEnd() - 1),
+            isString: true,
+            arrf: [start, end]
+          });
+        }
+        break;
+      }
+    }
+    // 递归遍历所有子节点
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(ast, visit);
+  return matches;
 }
 
 /**
@@ -540,13 +806,17 @@ function findVueText(ast) {
 function findChineseText(code: string, fileName: string) {
   if (fileName.endsWith('.html')) {
     return findTextInHtml(code);
-  } else if (fileName.endsWith('.vue')) {
-    return findTextInVue(code);
-  } else if (fileName.endsWith('.js') || fileName.endsWith('.jsx')) {
-    return findTextInJs(code);
-  } else {
-    return findTextInTs(code, fileName);
   }
+
+  if (fileName.endsWith('.vue')) {
+    return findTextInVue(code);
+  }
+
+  if (fileName.endsWith('.js') || fileName.endsWith('.jsx')) {
+    return findTextInJs(code);
+  }
+
+  return findTextInTs(code, fileName);
 }
 
-export { findChineseText, findTextInVue };
+export { findChineseText };

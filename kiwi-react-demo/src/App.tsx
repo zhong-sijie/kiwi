@@ -106,7 +106,7 @@ function App() {
 
       {/* 变量插值/模板字符串/拼接/三元表达式/复杂表达式 */}
       <div>欢迎，{userName}！</div>
-      <div>{`你好，${userName}，今天是${date}，你有${count}条消息。`}</div>
+      <div>{`你好 React，${userName}，今天是${date}，你有${count}条消息。`}</div>
       <div>{'你有' + count + '条未读消息'}</div>
       <div>{isLogin ? '已登录' : '未登录'}</div>
       <div>{count > 0 ? `你有${count}条新消息` : '暂无新消息'}</div>
